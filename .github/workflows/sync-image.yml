@@ -1,0 +1,129 @@
+name: Sync container image to Tencent TCR
+
+on:
+  push:
+    paths:
+      - images.txt
+  workflow_dispatch:
+    inputs:
+      source_image:
+        description: "源镜像，例如 nginx:1.27 或 ghcr.io/example/app:v1"
+        required: true
+        type: string
+      target_image:
+        description: "TCR 内的目标镜像（命名空间/仓库:标签），例如 mirror/nginx:1.27"
+        required: true
+        type: string
+      copy_mode:
+        description: "同步模式"
+        required: true
+        default: all-platforms
+        type: choice
+        options:
+          - all-platforms
+          - single-platform
+      platform:
+        description: "单平台模式使用，例如 linux/amd64；完整同步模式会忽略此项"
+        required: true
+        default: linux/amd64
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan images to sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    env:
+      PLAN_MODE: ${{ github.event_name == 'workflow_dispatch' && 'inputs' || 'changed' }}
+      IMAGES_FILE: images.txt
+      SOURCE_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.source_image || '' }}
+      TARGET_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_image || '' }}
+      COPY_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.copy_mode || 'all-platforms' }}
+      PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'linux/amd64' }}
+      TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE || 'mirror' }}
+      BEFORE_SHA: ${{ github.event.before }}
+      AFTER_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Plan sync jobs
+        id: plan
+        shell: bash
+        run: ./scripts/parse-images.sh
+
+  sync:
+    name: Sync ${{ matrix.source_image }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: tcr-sync-${{ matrix.target_image }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      SOURCE_IMAGE: ${{ matrix.source_image }}
+      TARGET_IMAGE: ${{ matrix.target_image }}
+      COPY_MODE: ${{ matrix.copy_mode }}
+      PLATFORM: ${{ matrix.platform }}
+      TCR_REGISTRY: ${{ vars.TCR_REGISTRY }}
+      TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+      TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+      SOURCE_USERNAME: ${{ secrets.SOURCE_USERNAME }}
+      SOURCE_PASSWORD: ${{ secrets.SOURCE_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate configuration
+        id: config
+        shell: bash
+        run: ./scripts/validate-config.sh
+
+      - name: Install multi-platform image copier
+        if: matrix.copy_mode == 'all-platforms'
+        uses: regclient/actions/regctl-installer@78eb729dbdb4ef6480e85ff697b4410e22112583 # main
+        with:
+          release: v0.11.5
+
+      - name: Log in to source registry
+        if: env.SOURCE_USERNAME != '' && env.SOURCE_PASSWORD != ''
+        shell: bash
+        env:
+          SOURCE_REGISTRY: ${{ steps.config.outputs.source_registry }}
+        run: printf '%s' "$SOURCE_PASSWORD" | docker login "$SOURCE_REGISTRY" --username "$SOURCE_USERNAME" --password-stdin
+
+      - name: Log in to Tencent TCR
+        shell: bash
+        run: printf '%s' "$TCR_PASSWORD" | docker login "$TCR_REGISTRY" --username "$TCR_USERNAME" --password-stdin
+
+      - name: Sync image
+        id: sync
+        shell: bash
+        run: ./scripts/sync-image.sh
+
+      - name: Log out from registries
+        if: always()
+        shell: bash
+        env:
+          SOURCE_REGISTRY: ${{ steps.config.outputs.source_registry }}
+        run: |
+          docker logout "$TCR_REGISTRY" >/dev/null 2>&1 || true
+          if [[ -n "$SOURCE_USERNAME" && -n "$SOURCE_REGISTRY" ]]; then
+            docker logout "$SOURCE_REGISTRY" >/dev/null 2>&1 || true
+          fi

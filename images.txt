@@ -1,0 +1,9 @@
+# 每行一个要同步的镜像。空行和 # 开头的注释会被忽略。
+# 把镜像追加到本文件并提交到仓库后，GitHub Actions 会自动同步本次新增或修改的行。
+#
+# 只写源镜像时，目标地址为 ${TCR_NAMESPACE}/<仓库名>:<标签>
+#   nginx:1.27
+#   ghcr.io/example/app:v1
+#
+# 也可以同时指定 TCR 目标（不含 TCR 域名）：
+#   nginx:1.27  mirror/nginx:1.27
