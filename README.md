@@ -6,8 +6,8 @@
 
 - 在 `images.txt` 中每行写一个镜像，提交后自动同步本次新增或修改的行
 - 也可以在 GitHub Actions 页面手动输入源镜像与目标镜像
-- 默认同步全部平台（例如 `linux/amd64`、`linux/arm64`）
-- 可切换为单平台拉取、重打标签并推送
+- 默认只同步 `linux/amd64`，避免海外 GitHub 运行器向腾讯云推送多架构镜像时长时间无输出
+- 可切换为完整多平台复制，或指定其他单平台
 - 支持需要账号密码的私有源仓库
 - 输入校验、最小 GitHub Token 权限、并发保护及执行摘要
 - 密码仅通过 GitHub Actions Secrets 使用
@@ -34,6 +34,8 @@
 | --- | --- | --- |
 | `TCR_REGISTRY` | `demo.tencentcloudcr.com` | 只填域名，不含协议和仓库路径 |
 | `TCR_NAMESPACE` | `mirror` | 未写目标镜像时使用的 TCR 命名空间，默认 `mirror` |
+| `COPY_MODE` | `single-platform` | 由 `images.txt` 触发时的同步模式，默认 `single-platform` |
+| `PLATFORM` | `linux/amd64` | 单平台模式使用的架构 |
 
 在 **Secrets** 中创建：
 
@@ -81,7 +83,7 @@ ${TCR_REGISTRY}/mirror/nginx:1.27
 | --- | --- | --- |
 | `source_image` | `nginx:1.27` | 源镜像完整引用，也可使用 digest |
 | `target_image` | `mirror/nginx:1.27` | TCR 命名空间/仓库:标签，不含 TCR 域名 |
-| `copy_mode` | `all-platforms` | `all-platforms` 或 `single-platform` |
+| `copy_mode` | `single-platform` | `single-platform` 或 `all-platforms` |
 | `platform` | `linux/amd64` | 仅单平台模式使用 |
 
 完整目标地址会被组合为：
@@ -98,8 +100,8 @@ demo.tencentcloudcr.com/mirror/nginx:1.27
 
 ### 两种同步模式
 
-- `all-platforms`：使用固定版本的 `regctl` 在 Registry 之间复制镜像清单和各平台内容，适合保留官方镜像的多架构支持。
-- `single-platform`：执行 `docker pull --platform`、`docker tag` 和 `docker push`，目标镜像只包含所选平台。
+- `single-platform`（默认）：执行 `docker pull --platform`、`docker tag` 和 `docker push`，只同步一个平台。GitHub 托管运行器在海外，推送到 `ccr.ccs.tencentyun.com` 这类个人版 TCR 时请用这个模式。
+- `all-platforms`：使用固定版本的 `regctl` 复制完整多架构清单。`nginx` 官方镜像还包含 Windows 等平台，从海外传到腾讯云经常要十几分钟甚至更久，期间默认几乎没有进度日志，看起来像卡住。企业版且确实需要多架构时再选用。
 
 ## 私有源仓库示例
 

@@ -15,13 +15,13 @@ on:
         required: true
         type: string
       copy_mode:
-        description: "同步模式"
+        description: "同步模式。个人版 TCR 或海外 GitHub 运行器建议用 single-platform"
         required: true
-        default: all-platforms
+        default: single-platform
         type: choice
         options:
-          - all-platforms
           - single-platform
+          - all-platforms
       platform:
         description: "单平台模式使用，例如 linux/amd64；完整同步模式会忽略此项"
         required: true
@@ -44,8 +44,8 @@ jobs:
       IMAGES_FILE: images.txt
       SOURCE_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.source_image || '' }}
       TARGET_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_image || '' }}
-      COPY_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.copy_mode || 'all-platforms' }}
-      PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'linux/amd64' }}
+      COPY_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.copy_mode || vars.COPY_MODE || 'single-platform' }}
+      PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || vars.PLATFORM || 'linux/amd64' }}
       TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE || 'mirror' }}
       BEFORE_SHA: ${{ github.event.before }}
       AFTER_SHA: ${{ github.sha }}
