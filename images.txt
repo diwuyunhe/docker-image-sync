@@ -7,3 +7,6 @@
 #
 # 也可以同时指定 TCR 目标（不含 TCR 域名）：
 #   nginx:1.27  mirror/nginx:1.27
+
+
+nginx:1.27
