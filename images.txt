@@ -14,3 +14,4 @@ alpine:3.21
 node:22-alpine
 nginx:1.30.0-alpine
 amazoncorretto:17-alpine-jdk
+amazoncorretto:11-alpine-jdk
