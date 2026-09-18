@@ -15,3 +15,4 @@ node:22-alpine
 nginx:1.30.0-alpine
 amazoncorretto:17-alpine-jdk
 amazoncorretto:11-alpine-jdk
+weishaw/sub2api:0.2.5
