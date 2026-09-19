@@ -18,8 +18,14 @@ assert_contains() {
 
 export SOURCE_IMAGE="nginx:1.27"
 export TARGET_IMAGE="mirror/nginx:1.27"
+export REPO_TAG="nginx:1.27"
 export COPY_MODE="all-platforms"
 export PLATFORM="linux/amd64"
+export PUSH_TARGETS="harbor,tcr"
+export HARBOR_REGISTRY="harbor.example.com"
+export HARBOR_NAMESPACE="library"
+export HARBOR_USERNAME="harbor-user"
+export HARBOR_PASSWORD="harbor-password"
 export TCR_REGISTRY="demo.tencentcloudcr.com"
 export TCR_NAMESPACE="mirror"
 export TCR_USERNAME="test-user"
@@ -39,9 +45,9 @@ EOF
 PLAN_MODE="file" IMAGES_FILE="$temp_dir/images.txt" GITHUB_OUTPUT="$temp_dir/parse-file" \
   "$project_dir/scripts/parse-images.sh" >/dev/null
 assert_contains "$temp_dir/parse-file" 'count=3'
-assert_contains "$temp_dir/parse-file" '"source_image":"nginx:1.27","target_image":"mirror/nginx:1.27"'
-assert_contains "$temp_dir/parse-file" '"source_image":"ghcr.io/example/app:v1","target_image":"team/app:v1"'
-assert_contains "$temp_dir/parse-file" '"source_image":"bitnami/redis:7.2","target_image":"mirror/redis:7.2"'
+assert_contains "$temp_dir/parse-file" '"source_image":"nginx:1.27","target_image":"","repo_tag":"nginx:1.27"'
+assert_contains "$temp_dir/parse-file" '"source_image":"ghcr.io/example/app:v1","target_image":"team/app:v1","repo_tag":"app:v1"'
+assert_contains "$temp_dir/parse-file" '"source_image":"bitnami/redis:7.2","target_image":"","repo_tag":"redis:7.2"'
 
 printf '%s\n' "# only comments" "" > "$temp_dir/empty-images.txt"
 PLAN_MODE="file" IMAGES_FILE="$temp_dir/empty-images.txt" GITHUB_OUTPUT="$temp_dir/parse-empty" \
@@ -52,7 +58,16 @@ assert_contains "$temp_dir/parse-empty" 'matrix={"include":[]}'
 PLAN_MODE="inputs" GITHUB_OUTPUT="$temp_dir/parse-inputs" \
   "$project_dir/scripts/parse-images.sh" >/dev/null
 assert_contains "$temp_dir/parse-inputs" 'count=1'
-assert_contains "$temp_dir/parse-inputs" '"source_image":"nginx:1.27","target_image":"mirror/nginx:1.27"'
+assert_contains "$temp_dir/parse-inputs" '"source_image":"nginx:1.27","target_image":"mirror/nginx:1.27","repo_tag":"nginx:1.27"'
+
+TARGET_IMAGE="" PLAN_MODE="inputs" GITHUB_OUTPUT="$temp_dir/parse-inputs-derived" \
+  "$project_dir/scripts/parse-images.sh" >/dev/null
+assert_contains "$temp_dir/parse-inputs-derived" '"source_image":"nginx:1.27","target_image":"","repo_tag":"nginx:1.27"'
+
+if TARGET_IMAGE="" SOURCE_IMAGE="nginx@sha256:0123abcd" PLAN_MODE="inputs" \
+  GITHUB_OUTPUT="$temp_dir/parse-digest" "$project_dir/scripts/parse-images.sh" >/dev/null 2>&1; then
+  fail "使用 digest 且未填目标镜像的输入未被拒绝"
+fi
 
 printf '%s\n' "nginx:1.27 extra leftover" > "$temp_dir/bad-images.txt"
 if PLAN_MODE="file" IMAGES_FILE="$temp_dir/bad-images.txt" GITHUB_OUTPUT="$temp_dir/parse-bad" \
@@ -81,7 +96,7 @@ after_sha="$(git -C "$git_repo" rev-parse HEAD)"
     "$project_dir/scripts/parse-images.sh" >/dev/null
 )
 assert_contains "$temp_dir/parse-changed" 'count=1'
-assert_contains "$temp_dir/parse-changed" '"source_image":"redis:7","target_image":"mirror/redis:7"'
+assert_contains "$temp_dir/parse-changed" '"source_image":"redis:7","target_image":"","repo_tag":"redis:7"'
 
 "$project_dir/scripts/validate-config.sh" >/dev/null
 assert_contains "$GITHUB_OUTPUT" "source_registry=docker.io"
@@ -89,6 +104,9 @@ assert_contains "$GITHUB_OUTPUT" "source_registry=docker.io"
 SOURCE_IMAGE="ghcr.io/example/app:v1" GITHUB_OUTPUT="$temp_dir/private-output" \
   "$project_dir/scripts/validate-config.sh" >/dev/null
 assert_contains "$temp_dir/private-output" "source_registry=ghcr.io"
+
+TARGET_IMAGE="" GITHUB_OUTPUT="$temp_dir/no-target-output" \
+  "$project_dir/scripts/validate-config.sh" >/dev/null
 
 if TARGET_IMAGE="MissingNamespace:latest" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
   fail "无效的 target_image 未被拒绝"
@@ -100,6 +118,14 @@ fi
 
 if SOURCE_IMAGE="https://docker.io/library/nginx:latest" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
   fail "带 URL 协议的 source_image 未被拒绝"
+fi
+
+if PUSH_TARGETS="harbor" HARBOR_REGISTRY="" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
+  fail "缺少 Harbor Registry 配置未被拒绝"
+fi
+
+if PUSH_TARGETS="harbor,tcr" TCR_PASSWORD="" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
+  fail "缺少 TCR 凭证未被拒绝"
 fi
 
 mkdir -p "$temp_dir/bin"
@@ -129,14 +155,25 @@ export REGCTL_CALLS="$temp_dir/regctl-calls"
 export GITHUB_OUTPUT="$temp_dir/sync-output"
 export GITHUB_STEP_SUMMARY="$temp_dir/summary"
 
-"$project_dir/scripts/sync-image.sh" >/dev/null
+TARGET_IMAGE="" "$project_dir/scripts/sync-image.sh" >/dev/null
+assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 harbor.example.com/library/nginx:1.27"
 assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
+assert_contains "$GITHUB_OUTPUT" "harbor_target_ref=harbor.example.com/library/nginx:1.27"
+assert_contains "$GITHUB_OUTPUT" "tcr_target_ref=demo.tencentcloudcr.com/mirror/nginx:1.27"
 assert_contains "$GITHUB_OUTPUT" "digest=sha256:0123456789abcdef"
 assert_contains "$GITHUB_STEP_SUMMARY" "镜像同步成功"
+assert_contains "$GITHUB_STEP_SUMMARY" "harbor.example.com/library/nginx:1.27"
+
+: > "$REGCTL_CALLS"
+TARGET_IMAGE="mirror/nginx:1.27" "$project_dir/scripts/sync-image.sh" >/dev/null
+assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 harbor.example.com/mirror/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 
 : > "$DOCKER_CALLS"
-COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
+TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
 assert_contains "$DOCKER_CALLS" "pull --platform linux/amd64 nginx:1.27"
+assert_contains "$DOCKER_CALLS" "tag nginx:1.27 harbor.example.com/library/nginx:1.27"
+assert_contains "$DOCKER_CALLS" "push harbor.example.com/library/nginx:1.27"
 assert_contains "$DOCKER_CALLS" "tag nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 assert_contains "$DOCKER_CALLS" "push demo.tencentcloudcr.com/mirror/nginx:1.27"
 

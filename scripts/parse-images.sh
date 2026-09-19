@@ -24,48 +24,51 @@ is_zero_sha() {
   [[ -z "$1" || "$1" =~ ^0+$ ]]
 }
 
-resolve_target() {
-  local source="$1"
-  local explicit="${2:-}"
-
-  if [[ -n "$explicit" ]]; then
-    printf '%s' "$explicit"
-    return
-  fi
-
-  local without_digest="${source%%@*}"
-  if [[ "$without_digest" != *:* ]]; then
-    fail "只写源镜像时必须带标签，或同时填写目标镜像：${source}"
-  fi
-
-  local path="$without_digest"
+# 去掉可能的 Registry 域名，返回 registry 内的仓库路径。
+strip_registry() {
+  local path="$1"
   local first="${path%%/*}"
   if [[ "$path" == */* && ("$first" == *.* || "$first" == *:* || "$first" == "localhost") ]]; then
     path="${path#*/}"
   fi
+  printf '%s' "$path"
+}
 
-  local name="${path%:*}"
-  local tag="${path##*:}"
-  local repo="${name##*/}"
+# 从 namespace/repo:tag 或 repo:tag 中取出 repo:tag。
+repo_tag_of() {
+  local ref="$1"
+  local name="${ref%:*}"
+  local tag="${ref##*:}"
+  [[ "$ref" == *:* && -n "$name" && -n "$tag" && "$name" != "$ref" ]] || return 1
+  printf '%s:%s' "${name##*/}" "$tag"
+}
 
-  [[ -n "$repo" && -n "$tag" && "$name" != "$path" ]] \
-    || fail "无法从源镜像推导目标地址，请显式填写目标镜像：${source}"
-
-  printf '%s' "${TCR_NAMESPACE}/${repo}:${tag}"
+# 计算矩阵中使用的 repo:tag，用于并发分组与日志展示。
+resolve_repo_tag() {
+  local source="$1"
+  local target="$2"
+  local candidate
+  if [[ -n "$target" ]]; then
+    candidate="$(strip_registry "${target%%@*}")"
+    repo_tag_of "$candidate" \
+      || fail "无法解析目标镜像的仓库和标签：${target}"
+  else
+    [[ "$source" != *@* ]] \
+      || fail "使用 digest 的源镜像必须同时填写目标镜像：${source}"
+    candidate="$(strip_registry "$source")"
+    repo_tag_of "$candidate" \
+      || fail "只写源镜像时必须带标签，或同时填写目标镜像：${source}"
+  fi
 }
 
 append_item() {
   local source="$1"
   local target="$2"
-  local copy_mode="$3"
-  local platform="$4"
-  local escaped_source escaped_target escaped_copy_mode escaped_platform
+  local repo_tag="$3"
+  local copy_mode="$4"
+  local platform="$5"
 
-  escaped_source="$(json_escape "$source")"
-  escaped_target="$(json_escape "$target")"
-  escaped_copy_mode="$(json_escape "$copy_mode")"
-  escaped_platform="$(json_escape "$platform")"
-  items+=("{\"source_image\":\"${escaped_source}\",\"target_image\":\"${escaped_target}\",\"copy_mode\":\"${escaped_copy_mode}\",\"platform\":\"${escaped_platform}\"}")
+  items+=("{\"source_image\":\"$(json_escape "$source")\",\"target_image\":\"$(json_escape "$target")\",\"repo_tag\":\"$(json_escape "$repo_tag")\",\"copy_mode\":\"$(json_escape "$copy_mode")\",\"platform\":\"$(json_escape "$platform")\"}")
 }
 
 parse_line() {
@@ -80,8 +83,9 @@ parse_line() {
   [[ -z "$extra" ]] || fail "每行最多填写「源镜像」或「源镜像 目标镜像」：${line}"
   [[ -n "$source_image" ]] || return 0
 
-  target_image="$(resolve_target "$source_image" "$target_image")"
-  append_item "$source_image" "$target_image" "$DEFAULT_COPY_MODE" "$DEFAULT_PLATFORM"
+  local repo_tag
+  repo_tag="$(resolve_repo_tag "$source_image" "$target_image")"
+  append_item "$source_image" "$target_image" "$repo_tag" "$DEFAULT_COPY_MODE" "$DEFAULT_PLATFORM"
 }
 
 collect_changed_lines() {
@@ -101,7 +105,6 @@ collect_changed_lines() {
 
 IMAGES_FILE="${IMAGES_FILE:-images.txt}"
 PLAN_MODE="${PLAN_MODE:-file}"
-TCR_NAMESPACE="${TCR_NAMESPACE:-mirror}"
 DEFAULT_COPY_MODE="${COPY_MODE:-all-platforms}"
 DEFAULT_PLATFORM="${PLATFORM:-linux/amd64}"
 BEFORE_SHA="${BEFORE_SHA:-}"
@@ -111,8 +114,8 @@ items=()
 case "$PLAN_MODE" in
   inputs)
     [[ -n "${SOURCE_IMAGE:-}" ]] || fail "缺少必填配置：SOURCE_IMAGE"
-    [[ -n "${TARGET_IMAGE:-}" ]] || fail "缺少必填配置：TARGET_IMAGE"
-    append_item "$SOURCE_IMAGE" "$TARGET_IMAGE" "$DEFAULT_COPY_MODE" "$DEFAULT_PLATFORM"
+    repo_tag="$(resolve_repo_tag "$SOURCE_IMAGE" "${TARGET_IMAGE:-}")"
+    append_item "$SOURCE_IMAGE" "${TARGET_IMAGE:-}" "$repo_tag" "$DEFAULT_COPY_MODE" "$DEFAULT_PLATFORM"
     ;;
   file)
     [[ -f "$IMAGES_FILE" ]] || fail "找不到镜像清单：${IMAGES_FILE}"
@@ -153,7 +156,13 @@ fi
 for item in "${items[@]}"; do
   source_image="${item#*\"source_image\":\"}"
   source_image="${source_image%%\"*}"
+  repo_tag="${item#*\"repo_tag\":\"}"
+  repo_tag="${repo_tag%%\"*}"
   target_image="${item#*\"target_image\":\"}"
   target_image="${target_image%%\"*}"
-  echo "- ${source_image} -> ${target_image}"
+  if [[ -n "$target_image" ]]; then
+    echo "- ${source_image} -> ${target_image}（推送到所有目标 Registry）"
+  else
+    echo "- ${source_image} -> <目标 Registry 命名空间>/${repo_tag}"
+  fi
 done

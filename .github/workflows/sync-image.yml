@@ -1,4 +1,4 @@
-name: Sync container image to Tencent TCR
+name: Sync container image to Harbor and Tencent TCR
 
 on:
   push:
@@ -11,8 +11,9 @@ on:
         required: true
         type: string
       target_image:
-        description: "TCR 内的目标镜像（命名空间/仓库:标签），例如 mirror/nginx:1.27"
-        required: true
+        description: "所有目标 Registry 内的镜像路径（命名空间/仓库:标签）。留空时使用各 Registry 自己的命名空间"
+        required: false
+        default: ""
         type: string
       copy_mode:
         description: "同步模式。个人版 TCR 或海外 GitHub 运行器建议用 single-platform"
@@ -46,7 +47,6 @@ jobs:
       TARGET_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_image || '' }}
       COPY_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.copy_mode || vars.COPY_MODE || 'single-platform' }}
       PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || vars.PLATFORM || 'linux/amd64' }}
-      TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE || 'mirror' }}
       BEFORE_SHA: ${{ github.event.before }}
       AFTER_SHA: ${{ github.sha }}
     steps:
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
-      group: tcr-sync-${{ matrix.target_image }}
+      group: image-sync-${{ matrix.source_image }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -76,9 +76,16 @@ jobs:
     env:
       SOURCE_IMAGE: ${{ matrix.source_image }}
       TARGET_IMAGE: ${{ matrix.target_image }}
+      REPO_TAG: ${{ matrix.repo_tag }}
       COPY_MODE: ${{ matrix.copy_mode }}
       PLATFORM: ${{ matrix.platform }}
+      PUSH_TARGETS: ${{ vars.PUSH_TARGETS || 'harbor,tcr' }}
+      HARBOR_REGISTRY: ${{ vars.HARBOR_REGISTRY }}
+      HARBOR_NAMESPACE: ${{ vars.HARBOR_NAMESPACE }}
+      HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+      HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
       TCR_REGISTRY: ${{ vars.TCR_REGISTRY }}
+      TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE }}
       TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
       TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
       SOURCE_USERNAME: ${{ secrets.SOURCE_USERNAME }}
@@ -108,9 +115,22 @@ jobs:
           SOURCE_REGISTRY: ${{ steps.config.outputs.source_registry }}
         run: printf '%s' "$SOURCE_PASSWORD" | docker login "$SOURCE_REGISTRY" --username "$SOURCE_USERNAME" --password-stdin
 
-      - name: Log in to Tencent TCR
+      - name: Log in to target registries
         shell: bash
-        run: printf '%s' "$TCR_PASSWORD" | docker login "$TCR_REGISTRY" --username "$TCR_USERNAME" --password-stdin
+        run: |
+          IFS=',' read -r -a targets <<< "$PUSH_TARGETS"
+          for raw_name in "${targets[@]}"; do
+            name="$(printf '%s' "$raw_name" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            [[ -n "$name" ]] || continue
+            upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+            registry_var="${upper}_REGISTRY"
+            username_var="${upper}_USERNAME"
+            password_var="${upper}_PASSWORD"
+            registry="${!registry_var}"
+            username="${!username_var}"
+            password="${!password_var}"
+            printf '%s' "$password" | docker login "$registry" --username "$username" --password-stdin
+          done
 
       - name: Sync image
         id: sync
@@ -123,7 +143,14 @@ jobs:
         env:
           SOURCE_REGISTRY: ${{ steps.config.outputs.source_registry }}
         run: |
-          docker logout "$TCR_REGISTRY" >/dev/null 2>&1 || true
+          IFS=',' read -r -a targets <<< "$PUSH_TARGETS"
+          for raw_name in "${targets[@]}"; do
+            name="$(printf '%s' "$raw_name" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            [[ -n "$name" ]] || continue
+            upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+            registry_var="${upper}_REGISTRY"
+            docker logout "${!registry_var}" >/dev/null 2>&1 || true
+          done
           if [[ -n "$SOURCE_USERNAME" && -n "$SOURCE_REGISTRY" ]]; then
             docker logout "$SOURCE_REGISTRY" >/dev/null 2>&1 || true
           fi
