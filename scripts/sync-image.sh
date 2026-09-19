@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PUSH_TARGETS="${PUSH_TARGETS:-harbor,tcr}"
+PUSH_TARGETS="${PUSH_TARGETS:-harbor}"
 
 target_names=()
 target_refs=()

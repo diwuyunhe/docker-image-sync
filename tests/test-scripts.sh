@@ -177,4 +177,11 @@ assert_contains "$DOCKER_CALLS" "push harbor.example.com/library/nginx:1.27"
 assert_contains "$DOCKER_CALLS" "tag nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 assert_contains "$DOCKER_CALLS" "push demo.tencentcloudcr.com/mirror/nginx:1.27"
 
+: > "$DOCKER_CALLS"
+env -u PUSH_TARGETS TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
+assert_contains "$DOCKER_CALLS" "push harbor.example.com/library/nginx:1.27"
+if grep -Fq -- "demo.tencentcloudcr.com/mirror/nginx:1.27" "$DOCKER_CALLS"; then
+  fail "未设置 PUSH_TARGETS 时不应推送到 TCR"
+fi
+
 echo "All tests passed"

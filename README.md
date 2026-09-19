@@ -2,12 +2,12 @@
 
 通过 GitHub Actions 将 Docker Hub、GHCR 或其他 OCI Registry 中的镜像同步到自建 Harbor 与腾讯云容器镜像服务 TCR。无需自建服务器，支持完整保留多架构镜像，也支持只同步指定平台。
 
-默认会把每个镜像同时推送到 `harbor,tcr` 两个 Registry（由 `PUSH_TARGETS` 控制），其中 Harbor 是默认的主推送目标。
+默认只把每个镜像推送到自建 Harbor（`PUSH_TARGETS=harbor`），需要时可再打开 TCR 等其它 Registry。
 
 ## 功能
 
 - 在 `images.txt` 中每行写一个镜像，提交后自动同步本次新增或修改的行
-- 一次推送同时写入 Harbor 和 TCR，可用 `PUSH_TARGETS` 调整目标与顺序
+- 默认只推送到 Harbor，可用 `PUSH_TARGETS=harbor,tcr` 同时写入多个 Registry
 - 也可以在 GitHub Actions 页面手动输入源镜像与目标镜像
 - 默认只同步 `linux/amd64`，避免海外 GitHub 运行器向国内 Registry 推送多架构镜像时长时间无输出
 - 可切换为完整多平台复制，或指定其他单平台
@@ -43,7 +43,7 @@
 
 | 名称 | 示例 | 说明 |
 | --- | --- | --- |
-| `PUSH_TARGETS` | `harbor,tcr` | 要推送的 Registry 列表，顺序即优先级，默认 `harbor,tcr`；只想推一个时写 `harbor` |
+| `PUSH_TARGETS` | `harbor` | 要推送的 Registry 列表，顺序即优先级，默认为 `harbor`；需要同时推 TCR 时写 `harbor,tcr` |
 | `HARBOR_REGISTRY` | `harbor.example.com` | Harbor 域名，只填域名，不含协议和仓库路径 |
 | `HARBOR_NAMESPACE` | `library` | 未写目标镜像时 Harbor 使用的项目名 |
 | `TCR_REGISTRY` | `demo.tencentcloudcr.com` | TCR 域名，只填域名，不含协议和仓库路径 |
@@ -57,12 +57,12 @@
 | --- | --- | --- |
 | `HARBOR_USERNAME` | 是 | Harbor 机器人账号或用户名 |
 | `HARBOR_PASSWORD` | 是 | Harbor 密码或机器人 Token |
-| `TCR_USERNAME` | 是 | TCR 访问凭证用户名 |
-| `TCR_PASSWORD` | 是 | TCR 访问凭证密码 |
+| `TCR_USERNAME` | 否 | TCR 访问凭证用户名，仅在 `PUSH_TARGETS` 含 `tcr` 时需要 |
+| `TCR_PASSWORD` | 否 | TCR 访问凭证密码，仅在 `PUSH_TARGETS` 含 `tcr` 时需要 |
 | `SOURCE_USERNAME` | 否 | 私有源 Registry 用户名 |
 | `SOURCE_PASSWORD` | 否 | 私有源 Registry 密码或 Token |
 
-`PUSH_TARGETS` 中列出的每个 Registry 都必须同时配置对应的 `*_REGISTRY`、`*_USERNAME`、`*_PASSWORD`；未写显式目标镜像时还需要 `*_NAMESPACE`。例如只想推送到 Harbor 时，把 `PUSH_TARGETS` 设为 `harbor` 即可，无须配置 TCR。
+`PUSH_TARGETS` 中列出的每个 Registry 都必须同时配置对应的 `*_REGISTRY`、`*_USERNAME`、`*_PASSWORD`；未写显式目标镜像时还需要 `*_NAMESPACE`。默认只推送到 Harbor，因此 TCR 的变量和密钥可以暂时不配置；需要时把 `PUSH_TARGETS` 改为 `harbor,tcr` 并补齐 TCR 配置即可。
 
 公共源镜像不要配置 `SOURCE_USERNAME` 和 `SOURCE_PASSWORD`。私有源仓库必须同时配置二者；工作流会根据源镜像地址自动识别 Registry 域名。
 
@@ -81,13 +81,15 @@ ghcr.io/example/app:v1
 nginx:1.27  mirror/nginx:1.27
 ```
 
-假设 `PUSH_TARGETS=harbor,tcr`、`HARBOR_NAMESPACE=library`、`TCR_NAMESPACE=mirror`，上面三行同步后的目标分别是：
+假设默认 `PUSH_TARGETS=harbor`、`HARBOR_NAMESPACE=library`，上面三行同步后的目标分别是：
 
 ```text
-harbor.example.com/library/nginx:1.27   +  demo.tencentcloudcr.com/mirror/nginx:1.27
-harbor.example.com/library/app:v1       +  demo.tencentcloudcr.com/mirror/app:v1
-harbor.example.com/mirror/nginx:1.27    +  demo.tencentcloudcr.com/mirror/nginx:1.27
+harbor.example.com/library/nginx:1.27
+harbor.example.com/library/app:v1
+harbor.example.com/mirror/nginx:1.27
 ```
+
+如果还设置了 `PUSH_TARGETS=harbor,tcr` 和 `TCR_NAMESPACE=mirror`，则每个镜像会再多推一份到 `demo.tencentcloudcr.com/mirror/...`。
 
 同一提交可以写多行，会并行同步；只同步本次新增或修改的行，不会重跑文件里已有的旧条目。只写源镜像时，目标仓库名取最后一段路径，因此 `bitnami/redis:7.2` 和 `redis:7.2` 都会落到 `<命名空间>/redis:7.2`；有冲突时请显式写出目标镜像。手动运行工作流时仍可按下面的方式同步单个镜像。
 
@@ -108,8 +110,9 @@ harbor.example.com/mirror/nginx:1.27    +  demo.tencentcloudcr.com/mirror/nginx:
 
 ```text
 ${HARBOR_REGISTRY}/${target_image}   例如 harbor.example.com/mirror/nginx:1.27
-${TCR_REGISTRY}/${target_image}      例如 demo.tencentcloudcr.com/mirror/nginx:1.27
 ```
+
+`PUSH_TARGETS` 含 `tcr` 时还会额外推送到 `${TCR_REGISTRY}/${target_image}`，例如 `demo.tencentcloudcr.com/mirror/nginx:1.27`。
 
 ### 两种同步模式
 
