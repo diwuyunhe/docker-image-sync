@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PUSH_TARGETS="${PUSH_TARGETS:-tcr}"
+PUSH_TARGETS="${PUSH_TARGETS:-selfregistry}"
 
 target_names=()
 target_refs=()

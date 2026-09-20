@@ -1,11 +1,11 @@
 # 每行一个要同步的镜像。空行和 # 开头的注释会被忽略。
 # 把镜像追加到本文件并提交到仓库后，GitHub Actions 会自动同步本次新增或修改的行。
 #
-# 镜像默认推送到 PUSH_TARGETS 指定的 Registry（默认 tcr）。
-# 需要同时推送到自建 Registry 时，把 PUSH_TARGETS 设为例如 harbor,tcr。
+# 镜像默认推送到 PUSH_TARGETS 指定的 Registry（默认 selfregistry，即自建 registry）。
+# 需要同时推送到腾讯云 TCR 时，把 PUSH_TARGETS 设为 selfregistry,tcr。
 #
 # 只写源镜像时，每个 Registry 使用自己的命名空间/项目名：
-#   nginx:1.27            -> ${TCR_REGISTRY}/${TCR_NAMESPACE}/nginx:1.27
+#   nginx:1.27            -> ${SELFREGISTRY_REGISTRY}/${SELFREGISTRY_NAMESPACE}/nginx:1.27
 #   ghcr.io/example/app:v1
 #
 # 也可以显式指定目标路径（不含任何 Registry 域名），该路径会用于所有 Registry：

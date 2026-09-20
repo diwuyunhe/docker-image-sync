@@ -1,4 +1,4 @@
-name: Sync container image to Tencent TCR and self-hosted registries
+name: Sync container images to self-hosted registry and Tencent TCR
 
 on:
   push:
@@ -79,17 +79,17 @@ jobs:
       REPO_TAG: ${{ matrix.repo_tag }}
       COPY_MODE: ${{ matrix.copy_mode }}
       PLATFORM: ${{ matrix.platform }}
-      PUSH_TARGETS: ${{ vars.PUSH_TARGETS || 'tcr' }}
-      HARBOR_REGISTRY: ${{ vars.HARBOR_REGISTRY }}
-      HARBOR_NAMESPACE: ${{ vars.HARBOR_NAMESPACE }}
-      HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-      HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+      PUSH_TARGETS: ${{ vars.PUSH_TARGETS || 'selfregistry' }}
+      SELFREGISTRY_REGISTRY: ${{ vars.SELFREGISTRY_REGISTRY }}
+      SELFREGISTRY_NAMESPACE: ${{ vars.SELFREGISTRY_NAMESPACE }}
+      SELFREGISTRY_USERNAME: ${{ secrets.SELFREGISTRY_USERNAME || vars.SELFREGISTRY_USERNAME }}
+      SELFREGISTRY_PASSWORD: ${{ secrets.SELFREGISTRY_PASSWORD || vars.SELFREGISTRY_PASSWORD }}
       TCR_REGISTRY: ${{ vars.TCR_REGISTRY }}
       TCR_NAMESPACE: ${{ vars.TCR_NAMESPACE }}
-      TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
-      TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
-      SOURCE_USERNAME: ${{ secrets.SOURCE_USERNAME }}
-      SOURCE_PASSWORD: ${{ secrets.SOURCE_PASSWORD }}
+      TCR_USERNAME: ${{ secrets.TCR_USERNAME || vars.TCR_USERNAME }}
+      TCR_PASSWORD: ${{ secrets.TCR_PASSWORD || vars.TCR_PASSWORD }}
+      SOURCE_USERNAME: ${{ secrets.SOURCE_USERNAME || vars.SOURCE_USERNAME }}
+      SOURCE_PASSWORD: ${{ secrets.SOURCE_PASSWORD || vars.SOURCE_PASSWORD }}
 
     steps:
       - name: Checkout repository

@@ -21,11 +21,11 @@ export TARGET_IMAGE="mirror/nginx:1.27"
 export REPO_TAG="nginx:1.27"
 export COPY_MODE="all-platforms"
 export PLATFORM="linux/amd64"
-export PUSH_TARGETS="harbor,tcr"
-export HARBOR_REGISTRY="harbor.example.com"
-export HARBOR_NAMESPACE="library"
-export HARBOR_USERNAME="harbor-user"
-export HARBOR_PASSWORD="harbor-password"
+export PUSH_TARGETS="selfregistry,tcr"
+export SELFREGISTRY_REGISTRY="registry.internal.example.com"
+export SELFREGISTRY_NAMESPACE="library"
+export SELFREGISTRY_USERNAME="selfregistry-user"
+export SELFREGISTRY_PASSWORD="selfregistry-password"
 export TCR_REGISTRY="demo.tencentcloudcr.com"
 export TCR_NAMESPACE="mirror"
 export TCR_USERNAME="test-user"
@@ -120,12 +120,29 @@ if SOURCE_IMAGE="https://docker.io/library/nginx:latest" "$project_dir/scripts/v
   fail "带 URL 协议的 source_image 未被拒绝"
 fi
 
-if PUSH_TARGETS="harbor" HARBOR_REGISTRY="" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
-  fail "缺少 Harbor Registry 配置未被拒绝"
+if PUSH_TARGETS="selfregistry" SELFREGISTRY_REGISTRY="" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
+  fail "缺少自建 Registry 地址配置未被拒绝"
 fi
 
-if PUSH_TARGETS="harbor,tcr" TCR_PASSWORD="" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
+if PUSH_TARGETS="selfregistry,tcr" TCR_PASSWORD="" "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
   fail "缺少 TCR 凭证未被拒绝"
+fi
+
+PUSH_TARGETS="myregistry" MYREGISTRY_REGISTRY="registry.internal.example.com" \
+  MYREGISTRY_NAMESPACE="mirror" MYREGISTRY_USERNAME="robot" MYREGISTRY_PASSWORD="token" \
+  GITHUB_OUTPUT="$temp_dir/custom-registry-output" \
+  "$project_dir/scripts/validate-config.sh" >/dev/null
+
+if PUSH_TARGETS="myregistry" MYREGISTRY_REGISTRY="registry.internal.example.com" \
+  MYREGISTRY_USERNAME="robot" MYREGISTRY_PASSWORD="token" TARGET_IMAGE="" \
+  "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
+  fail "自定义 Registry 缺少命名空间且未指定目标镜像时未被拒绝"
+fi
+
+if PUSH_TARGETS="My-Registry!" SELFREGISTRY_REGISTRY="registry.internal.example.com" \
+  SELFREGISTRY_USERNAME="robot" SELFREGISTRY_PASSWORD="token" TARGET_IMAGE="" \
+  "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
+  fail "无效的 PUSH_TARGETS 名称未被拒绝"
 fi
 
 mkdir -p "$temp_dir/bin"
@@ -156,32 +173,32 @@ export GITHUB_OUTPUT="$temp_dir/sync-output"
 export GITHUB_STEP_SUMMARY="$temp_dir/summary"
 
 TARGET_IMAGE="" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 harbor.example.com/library/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 registry.internal.example.com/library/nginx:1.27"
 assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
-assert_contains "$GITHUB_OUTPUT" "harbor_target_ref=harbor.example.com/library/nginx:1.27"
+assert_contains "$GITHUB_OUTPUT" "selfregistry_target_ref=registry.internal.example.com/library/nginx:1.27"
 assert_contains "$GITHUB_OUTPUT" "tcr_target_ref=demo.tencentcloudcr.com/mirror/nginx:1.27"
 assert_contains "$GITHUB_OUTPUT" "digest=sha256:0123456789abcdef"
 assert_contains "$GITHUB_STEP_SUMMARY" "镜像同步成功"
-assert_contains "$GITHUB_STEP_SUMMARY" "harbor.example.com/library/nginx:1.27"
+assert_contains "$GITHUB_STEP_SUMMARY" "registry.internal.example.com/library/nginx:1.27"
 
 : > "$REGCTL_CALLS"
 TARGET_IMAGE="mirror/nginx:1.27" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 harbor.example.com/mirror/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 registry.internal.example.com/mirror/nginx:1.27"
 assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 
 : > "$DOCKER_CALLS"
 TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
 assert_contains "$DOCKER_CALLS" "pull --platform linux/amd64 nginx:1.27"
-assert_contains "$DOCKER_CALLS" "tag nginx:1.27 harbor.example.com/library/nginx:1.27"
-assert_contains "$DOCKER_CALLS" "push harbor.example.com/library/nginx:1.27"
+assert_contains "$DOCKER_CALLS" "tag nginx:1.27 registry.internal.example.com/library/nginx:1.27"
+assert_contains "$DOCKER_CALLS" "push registry.internal.example.com/library/nginx:1.27"
 assert_contains "$DOCKER_CALLS" "tag nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 assert_contains "$DOCKER_CALLS" "push demo.tencentcloudcr.com/mirror/nginx:1.27"
 
 : > "$DOCKER_CALLS"
 env -u PUSH_TARGETS TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$DOCKER_CALLS" "push demo.tencentcloudcr.com/mirror/nginx:1.27"
-if grep -Fq -- "harbor.example.com" "$DOCKER_CALLS"; then
-  fail "未设置 PUSH_TARGETS 时默认不应推送到 Harbor"
+assert_contains "$DOCKER_CALLS" "push registry.internal.example.com/library/nginx:1.27"
+if grep -Fq -- "demo.tencentcloudcr.com" "$DOCKER_CALLS"; then
+  fail "未设置 PUSH_TARGETS 时默认不应推送到 TCR"
 fi
 
 echo "All tests passed"
