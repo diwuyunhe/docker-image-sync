@@ -1,4 +1,4 @@
-name: Sync container image to Harbor and Tencent TCR
+name: Sync container image to Tencent TCR and self-hosted registries
 
 on:
   push:
@@ -79,7 +79,7 @@ jobs:
       REPO_TAG: ${{ matrix.repo_tag }}
       COPY_MODE: ${{ matrix.copy_mode }}
       PLATFORM: ${{ matrix.platform }}
-      PUSH_TARGETS: ${{ vars.PUSH_TARGETS || 'harbor' }}
+      PUSH_TARGETS: ${{ vars.PUSH_TARGETS || 'tcr' }}
       HARBOR_REGISTRY: ${{ vars.HARBOR_REGISTRY }}
       HARBOR_NAMESPACE: ${{ vars.HARBOR_NAMESPACE }}
       HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
