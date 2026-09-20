@@ -4,7 +4,7 @@
 # 镜像默认推送到 PUSH_TARGETS 指定的 Registry（默认 selfregistry，即自建 registry）。
 # 需要同时推送到腾讯云 TCR 时，把 PUSH_TARGETS 设为 selfregistry,tcr。
 #
-# 只写源镜像时，每个 Registry 使用自己的命名空间/项目名：
+# 只写源镜像时，每个 Registry 使用自己的路径前缀（NAMESPACE 可留空，留空则推到顶层）：
 #   nginx:1.27            -> ${SELFREGISTRY_REGISTRY}/${SELFREGISTRY_NAMESPACE}/nginx:1.27
 #   ghcr.io/example/app:v1
 #

@@ -90,8 +90,6 @@ for raw_name in "${push_targets[@]}"; do
   if [[ -n "$namespace" ]]; then
     [[ "$namespace" =~ ^[a-z0-9]+([._-]+[a-z0-9]+)*$ ]] \
       || fail "${namespace_var} 不是有效的命名空间或项目名"
-  elif [[ -z "$TARGET_IMAGE" ]]; then
-    fail "未填写 TARGET_IMAGE 时，${registry_var} 需要同时配置 ${namespace_var}"
   fi
 
   if [[ -n "$registry_summary" ]]; then

@@ -133,11 +133,8 @@ PUSH_TARGETS="myregistry" MYREGISTRY_REGISTRY="registry.internal.example.com" \
   GITHUB_OUTPUT="$temp_dir/custom-registry-output" \
   "$project_dir/scripts/validate-config.sh" >/dev/null
 
-if PUSH_TARGETS="myregistry" MYREGISTRY_REGISTRY="registry.internal.example.com" \
-  MYREGISTRY_USERNAME="robot" MYREGISTRY_PASSWORD="token" TARGET_IMAGE="" \
-  "$project_dir/scripts/validate-config.sh" >/dev/null 2>&1; then
-  fail "自定义 Registry 缺少命名空间且未指定目标镜像时未被拒绝"
-fi
+TARGET_IMAGE="" SELFREGISTRY_NAMESPACE="" GITHUB_OUTPUT="$temp_dir/no-namespace-output" \
+  "$project_dir/scripts/validate-config.sh" >/dev/null
 
 if PUSH_TARGETS="My-Registry!" SELFREGISTRY_REGISTRY="registry.internal.example.com" \
   SELFREGISTRY_USERNAME="robot" SELFREGISTRY_PASSWORD="token" TARGET_IMAGE="" \
@@ -200,5 +197,9 @@ assert_contains "$DOCKER_CALLS" "push registry.internal.example.com/library/ngin
 if grep -Fq -- "demo.tencentcloudcr.com" "$DOCKER_CALLS"; then
   fail "未设置 PUSH_TARGETS 时默认不应推送到 TCR"
 fi
+
+: > "$DOCKER_CALLS"
+TARGET_IMAGE="" SELFREGISTRY_NAMESPACE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
+assert_contains "$DOCKER_CALLS" "push registry.internal.example.com/nginx:1.27"
 
 echo "All tests passed"

@@ -49,7 +49,7 @@
 | --- | --- | --- |
 | `PUSH_TARGETS` | `selfregistry,tcr` | 要推送的 Registry 名称列表，顺序即优先级，默认为 `selfregistry` |
 | `SELFREGISTRY_REGISTRY` | `registry.internal.example.com` | 自建 Registry 域名，只填域名，不含协议和仓库路径 |
-| `SELFREGISTRY_NAMESPACE` | `mirror` | 未写目标镜像时自建 Registry 使用的路径前缀 |
+| `SELFREGISTRY_NAMESPACE` | `mirror` | 可选。未写目标镜像时自建 Registry 使用的路径前缀；留空则直接推到顶层仓库 |
 | `TCR_REGISTRY` | `demo.tencentcloudcr.com` | TCR 域名，仅在 `PUSH_TARGETS` 含 `tcr` 时需要 |
 | `TCR_NAMESPACE` | `mirror` | 未写目标镜像时 TCR 使用的命名空间，仅在含 `tcr` 时需要 |
 | `COPY_MODE` | `single-platform` | 由 `images.txt` 触发时的同步模式，默认 `single-platform` |
@@ -72,12 +72,12 @@
 | 变量/密钥 | 含义 |
 | --- | --- |
 | `NAME_REGISTRY` | Registry 域名（必填） |
-| `NAME_NAMESPACE` | 未写显式目标镜像时使用的命名空间/项目名 |
+| `NAME_NAMESPACE` | 可选。未写显式目标镜像时使用的路径前缀；留空则不加前缀 |
 | `NAME_USERNAME` / `NAME_PASSWORD` | 该 Registry 的凭证（必填） |
 
 所以自建 Registry 直接叫 `selfregistry` 即可；也可以换成任意名字，例如 `PUSH_TARGETS=selfregistry,tcr` 时分别读取 `SELFREGISTRY_*` 与 `TCR_*`。名称只允许字母、数字、`_`、`-`。
 
-`PUSH_TARGETS` 中列出的每个 Registry 都必须同时配置对应的 `*_REGISTRY`、`*_USERNAME`、`*_PASSWORD`；未写显式目标镜像时还需要 `*_NAMESPACE`。默认只推送到自建 Registry，因此 TCR 的配置可以暂时不填。
+`PUSH_TARGETS` 中列出的每个 Registry 都必须同时配置对应的 `*_REGISTRY`、`*_USERNAME`、`*_PASSWORD`；`*_NAMESPACE` 可选。默认只推送到自建 Registry，因此 TCR 的配置可以暂时不填。
 
 公共源镜像不要配置 `SOURCE_USERNAME` 和 `SOURCE_PASSWORD`。私有源仓库必须同时配置二者；工作流会根据源镜像地址自动识别 Registry 域名。
 
