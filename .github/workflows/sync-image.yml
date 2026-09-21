@@ -1,4 +1,4 @@
-name: Sync container images to self-hosted registry and Tencent TCR
+name: Sync container images
 
 on:
   push:

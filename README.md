@@ -111,7 +111,7 @@ registry.internal.example.com/mirror/nginx:1.27
 ### 方式二：手动运行工作流
 
 1. 打开 GitHub 仓库的 `Actions` 页面。
-2. 选择 `Sync container images to self-hosted registry and Tencent TCR`。
+2. 选择 `Sync container images`。
 3. 点击 `Run workflow`，填写参数：
 
 | 参数 | 示例 | 说明 |
