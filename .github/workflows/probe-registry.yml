@@ -1,0 +1,71 @@
+name: Probe registry latency
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/probe-registry.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe registry.xiaoadi.com
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install probe tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq iputils-ping dnsutils traceroute
+
+      - name: Measure runner to registry latency
+        shell: bash
+        env:
+          HOST: registry.xiaoadi.com
+        run: |
+          set +e
+          {
+            echo "## GitHub runner"
+            curl -fsS --max-time 10 https://ipinfo.io/json
+            echo
+            echo
+            echo "## DNS"
+            getent ahostsv4 "$HOST" | awk '{print $1}' | sort -u
+            dig +short "$HOST" A || true
+            echo
+            echo "## ping ${HOST}"
+            ping -c 10 -w 20 "$HOST"
+            echo
+            echo "## HTTPS GET /v2/ (5 times)"
+            for i in 1 2 3 4 5; do
+              curl -sS -o /dev/null \
+                -w "try${i} namelookup=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s code=%{http_code} ip=%{remote_ip}\n" \
+                --connect-timeout 10 --max-time 20 "https://${HOST}/v2/"
+            done
+            echo
+            echo "## HTTPS GET /v2/_catalog"
+            curl -sS -o /tmp/registry-catalog \
+              -w "connect=%{time_connect}s tls=%{time_appconnect}s ttfb=%{time_starttransfer}s total=%{time_total}s code=%{http_code}\n" \
+              --connect-timeout 10 --max-time 20 "https://${HOST}/v2/_catalog"
+            cat /tmp/registry-catalog
+            echo
+            echo
+            echo "## traceroute (max 15 hops)"
+            traceroute -n -m 15 -w 2 -q 1 "$HOST" || true
+          } | tee /tmp/probe.txt
+
+          {
+            echo "## GitHub 运行器到 registry.xiaoadi.com"
+            echo
+            echo '```'
+            cat /tmp/probe.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          ping_avg="$(awk -F/ '/rtt min\/avg\/max/ {print $5}' /tmp/probe.txt)"
+          https_last="$(awk '/^try5 / {print}' /tmp/probe.txt | tail -n 1)"
+          runner_ip="$(awk -F'"' '/"ip":/ {print $4; exit}' /tmp/probe.txt)"
+          runner_city="$(awk -F'"' '/"city":/ {print $4; exit}' /tmp/probe.txt)"
+          echo "::notice title=runner::${runner_ip:-unknown} ${runner_city:-unknown}"
+          echo "::notice title=ping-avg::${ping_avg:-unavailable} ms"
+          echo "::notice title=https-try5::${https_last:-unavailable}"
