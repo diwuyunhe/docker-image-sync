@@ -131,7 +131,7 @@ ${SELFREGISTRY_REGISTRY}/${target_image}   例如 registry.internal.example.com/
 
 ### 两种同步模式
 
-- `single-platform`（默认）：在运行器上 `docker pull --platform`，再 `docker save` 成 tar，最后用 `regctl image import` 推到目标 Registry。这样只同步一个平台，并且避免海外运行器对国内仓库做 registry-to-registry 逐层复制（那种路径对一百多 MB 的镜像也可能跑满 1 小时）。
+- `single-platform`（默认）：在运行器上 `docker pull --platform`，再 `docker save` 成 tar，最后用 `crane push` 推到目标 Registry（没有 crane 时回退到 `regctl image import`）。这样只同步一个平台，并且推送时始终带上账号密码。
 - `all-platforms`：使用固定版本的 `regctl` 复制完整多架构清单。`nginx` 官方镜像还包含 Windows 等平台，从海外传到国内经常要十几分钟甚至更久，期间默认几乎没有进度日志，看起来像卡住。确实需要多架构时再选用。
 
 ## 私有源仓库示例

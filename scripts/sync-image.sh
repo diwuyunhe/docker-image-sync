@@ -106,17 +106,27 @@ case "$COPY_MODE" in
       echo "缺少 docker，单平台同步无法继续" >&2
       exit 1
     }
-    command -v regctl >/dev/null 2>&1 || {
-      echo "缺少 regctl，单平台同步无法继续" >&2
+    if ! command -v crane >/dev/null 2>&1 && ! command -v regctl >/dev/null 2>&1; then
+      echo "缺少 crane 或 regctl，单平台同步无法继续" >&2
       exit 1
-    }
-    echo "正在拉取 ${PLATFORM}，再导入目标 Registry，避免海外运行器对国内仓库做跨仓复制"
+    fi
+    echo "正在拉取 ${PLATFORM}，再推送到目标 Registry"
     start_heartbeat
     docker pull --platform "$PLATFORM" "$SOURCE_IMAGE"
+    echo "源镜像已拉取，开始导出 tar"
     archive="$(mktemp "${TMPDIR:-/tmp}/image-sync.XXXXXX")"
     docker save --output "$archive" "$SOURCE_IMAGE"
+    echo "本地镜像已导出 $(du -h "$archive" | awk '{print $1}')：${archive}"
     for ref in "${target_refs[@]}"; do
-      regctl -v info image import "$ref" "$archive"
+      dest_registry="${ref%%/*}"
+      if command -v crane >/dev/null 2>&1; then
+        echo "正在用 crane 推送：${ref}"
+        crane push "$archive" "$ref"
+      else
+        echo "正在用 regctl 导入：${ref}"
+        regctl registry set --skip-check --blob-max -1 --blob-chunk 52428800 --req-concurrent 3 "$dest_registry" || true
+        regctl -v info image import "$ref" "$archive"
+      fi
     done
     remove_archive
     ;;

@@ -177,7 +177,7 @@ printf '%s\n' "$*" >> "$REGCTL_CALLS"
 MOCK
 chmod +x "$temp_dir/bin/regctl"
 
-export PATH="$temp_dir/bin:$PATH"
+export PATH="$temp_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export DOCKER_CALLS="$temp_dir/docker-calls"
 export REGCTL_CALLS="$temp_dir/regctl-calls"
 export GITHUB_OUTPUT="$temp_dir/sync-output"
@@ -202,6 +202,7 @@ assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 demo.tencentcloudcr.com/m
 TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
 assert_contains "$DOCKER_CALLS" "pull --platform linux/amd64 nginx:1.27"
 assert_contains "$DOCKER_CALLS" "save --output "
+assert_contains "$REGCTL_CALLS" "registry set --skip-check --blob-max -1 --blob-chunk 52428800 --req-concurrent 3 registry.internal.example.com"
 assert_contains "$REGCTL_CALLS" "image import registry.internal.example.com/library/nginx:1.27"
 assert_contains "$REGCTL_CALLS" "image import demo.tencentcloudcr.com/mirror/nginx:1.27"
 if grep -Fq -- "image copy" "$REGCTL_CALLS"; then
@@ -220,5 +221,25 @@ fi
 : > "$REGCTL_CALLS"
 TARGET_IMAGE="" SELFREGISTRY_NAMESPACE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
 assert_contains "$REGCTL_CALLS" "image import registry.internal.example.com/nginx:1.27"
+
+export CRANE_CALLS="$temp_dir/crane-calls"
+cat > "$temp_dir/bin/crane" <<'MOCK'
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >> "$CRANE_CALLS"
+MOCK
+chmod +x "$temp_dir/bin/crane"
+
+: > "$REGCTL_CALLS"
+: > "$DOCKER_CALLS"
+: > "$CRANE_CALLS"
+TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
+assert_contains "$DOCKER_CALLS" "pull --platform linux/amd64 nginx:1.27"
+assert_contains "$CRANE_CALLS" "push "
+assert_contains "$CRANE_CALLS" " registry.internal.example.com/library/nginx:1.27"
+assert_contains "$CRANE_CALLS" " demo.tencentcloudcr.com/mirror/nginx:1.27"
+if grep -Fq -- "image import" "$REGCTL_CALLS"; then
+  fail "已安装 crane 时不应再使用 regctl image import"
+fi
 
 echo "All tests passed"

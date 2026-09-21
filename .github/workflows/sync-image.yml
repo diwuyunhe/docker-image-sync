@@ -107,6 +107,15 @@ jobs:
         with:
           release: v0.11.5
 
+      - name: Install crane
+        shell: bash
+        env:
+          CRANE_VERSION: v0.20.6
+        run: |
+          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar -xz -C /usr/local/bin crane
+          crane version
+
       - name: Log in to source registry
         if: env.SOURCE_USERNAME != '' && env.SOURCE_PASSWORD != ''
         shell: bash

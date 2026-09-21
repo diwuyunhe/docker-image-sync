@@ -16,7 +16,7 @@ nginx:1.27  # 补推
 alpine:3.21  # 补推
 node:22-alpine  # 补推
 nginx:1.30.0-alpine  # 补推
-amazoncorretto:17-alpine-jdk  # 改用本地拉取 + regctl import 后重试
+amazoncorretto:17-alpine-jdk  # 改用 crane 推送后重试
 weishaw/sub2api:0.2.5  # 补推
 amazoncorretto:11-alpine-jdk
 redis:8.0  # 改用 regctl 后重试
