@@ -102,8 +102,7 @@ jobs:
         shell: bash
         run: ./scripts/validate-config.sh
 
-      - name: Install multi-platform image copier
-        if: matrix.copy_mode == 'all-platforms'
+      - name: Install image copier
         uses: regclient/actions/regctl-installer@78eb729dbdb4ef6480e85ff697b4410e22112583 # main
         with:
           release: v0.11.5
@@ -113,7 +112,9 @@ jobs:
         shell: bash
         env:
           SOURCE_REGISTRY: ${{ steps.config.outputs.source_registry }}
-        run: printf '%s' "$SOURCE_PASSWORD" | docker login "$SOURCE_REGISTRY" --username "$SOURCE_USERNAME" --password-stdin
+        run: |
+          printf '%s' "$SOURCE_PASSWORD" | docker login "$SOURCE_REGISTRY" --username "$SOURCE_USERNAME" --password-stdin
+          printf '%s' "$SOURCE_PASSWORD" | regctl registry login "$SOURCE_REGISTRY" --user "$SOURCE_USERNAME" --pass-stdin
 
       - name: Log in to target registries
         shell: bash
@@ -130,6 +131,7 @@ jobs:
             username="${!username_var}"
             password="${!password_var}"
             printf '%s' "$password" | docker login "$registry" --username "$username" --password-stdin
+            printf '%s' "$password" | regctl registry login "$registry" --user "$username" --pass-stdin
           done
 
       - name: Sync image
@@ -150,7 +152,9 @@ jobs:
             upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
             registry_var="${upper}_REGISTRY"
             docker logout "${!registry_var}" >/dev/null 2>&1 || true
+            regctl registry logout "${!registry_var}" >/dev/null 2>&1 || true
           done
           if [[ -n "$SOURCE_USERNAME" && -n "$SOURCE_REGISTRY" ]]; then
             docker logout "$SOURCE_REGISTRY" >/dev/null 2>&1 || true
+            regctl registry logout "$SOURCE_REGISTRY" >/dev/null 2>&1 || true
           fi

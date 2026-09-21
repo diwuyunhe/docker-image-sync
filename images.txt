@@ -19,4 +19,4 @@ nginx:1.30.0-alpine
 amazoncorretto:17-alpine-jdk
 weishaw/sub2api:0.2.5
 amazoncorretto:11-alpine-jdk
-redis:8.0  # nginx 调整后重试
+redis:8.0  # 改用 regctl 后重试

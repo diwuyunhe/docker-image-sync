@@ -89,12 +89,14 @@ case "$COPY_MODE" in
     done
     ;;
   single-platform)
-    echo "正在同步单个平台：${PLATFORM}"
+    command -v regctl >/dev/null 2>&1 || {
+      echo "缺少 regctl，单平台同步无法继续" >&2
+      exit 1
+    }
+    echo "正在用 regctl 同步单个平台：${PLATFORM}"
     start_heartbeat
-    docker pull --platform "$PLATFORM" "$SOURCE_IMAGE"
     for ref in "${target_refs[@]}"; do
-      docker tag "$SOURCE_IMAGE" "$ref"
-      docker push "$ref"
+      regctl -v info image copy --platform "$PLATFORM" "$SOURCE_IMAGE" "$ref"
     done
     ;;
   *)

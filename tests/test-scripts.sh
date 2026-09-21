@@ -183,23 +183,20 @@ TARGET_IMAGE="mirror/nginx:1.27" "$project_dir/scripts/sync-image.sh" >/dev/null
 assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 registry.internal.example.com/mirror/nginx:1.27"
 assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 
-: > "$DOCKER_CALLS"
+: > "$REGCTL_CALLS"
 TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$DOCKER_CALLS" "pull --platform linux/amd64 nginx:1.27"
-assert_contains "$DOCKER_CALLS" "tag nginx:1.27 registry.internal.example.com/library/nginx:1.27"
-assert_contains "$DOCKER_CALLS" "push registry.internal.example.com/library/nginx:1.27"
-assert_contains "$DOCKER_CALLS" "tag nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
-assert_contains "$DOCKER_CALLS" "push demo.tencentcloudcr.com/mirror/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 registry.internal.example.com/library/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 
-: > "$DOCKER_CALLS"
+: > "$REGCTL_CALLS"
 env -u PUSH_TARGETS TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$DOCKER_CALLS" "push registry.internal.example.com/library/nginx:1.27"
-if grep -Fq -- "demo.tencentcloudcr.com" "$DOCKER_CALLS"; then
+assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 registry.internal.example.com/library/nginx:1.27"
+if grep -Fq -- "demo.tencentcloudcr.com" "$REGCTL_CALLS"; then
   fail "未设置 PUSH_TARGETS 时默认不应推送到 TCR"
 fi
 
-: > "$DOCKER_CALLS"
+: > "$REGCTL_CALLS"
 TARGET_IMAGE="" SELFREGISTRY_NAMESPACE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$DOCKER_CALLS" "push registry.internal.example.com/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 registry.internal.example.com/nginx:1.27"
 
 echo "All tests passed"
