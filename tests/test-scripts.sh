@@ -147,11 +147,25 @@ cat > "$temp_dir/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -eu
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
-if [[ "$*" == "buildx imagetools inspect "* ]]; then
+if [[ "${1:-}" == "buildx" && "${2:-}" == "imagetools" && "${3:-}" == "inspect" ]]; then
   cat <<'OUTPUT'
 Name: demo.tencentcloudcr.com/mirror/nginx:1.27
 Digest: sha256:0123456789abcdef
 OUTPUT
+elif [[ "${1:-}" == "save" ]]; then
+  out=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --output|-o)
+        out="${2:-}"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  [[ -n "$out" ]] && : > "$out"
 fi
 MOCK
 chmod +x "$temp_dir/bin/docker"
@@ -184,19 +198,27 @@ assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 registry.internal.example
 assert_contains "$REGCTL_CALLS" "image copy nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
 
 : > "$REGCTL_CALLS"
+: > "$DOCKER_CALLS"
 TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 registry.internal.example.com/library/nginx:1.27"
-assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 demo.tencentcloudcr.com/mirror/nginx:1.27"
+assert_contains "$DOCKER_CALLS" "pull --platform linux/amd64 nginx:1.27"
+assert_contains "$DOCKER_CALLS" "save --output "
+assert_contains "$REGCTL_CALLS" "image import registry.internal.example.com/library/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image import demo.tencentcloudcr.com/mirror/nginx:1.27"
+if grep -Fq -- "image copy" "$REGCTL_CALLS"; then
+  fail "单平台模式不应再使用 regctl image copy"
+fi
 
 : > "$REGCTL_CALLS"
+: > "$DOCKER_CALLS"
 env -u PUSH_TARGETS TARGET_IMAGE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 registry.internal.example.com/library/nginx:1.27"
+assert_contains "$DOCKER_CALLS" "pull --platform linux/amd64 nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image import registry.internal.example.com/library/nginx:1.27"
 if grep -Fq -- "demo.tencentcloudcr.com" "$REGCTL_CALLS"; then
   fail "未设置 PUSH_TARGETS 时默认不应推送到 TCR"
 fi
 
 : > "$REGCTL_CALLS"
 TARGET_IMAGE="" SELFREGISTRY_NAMESPACE="" COPY_MODE="single-platform" "$project_dir/scripts/sync-image.sh" >/dev/null
-assert_contains "$REGCTL_CALLS" "image copy --platform linux/amd64 nginx:1.27 registry.internal.example.com/nginx:1.27"
+assert_contains "$REGCTL_CALLS" "image import registry.internal.example.com/nginx:1.27"
 
 echo "All tests passed"

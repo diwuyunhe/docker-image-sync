@@ -6,6 +6,7 @@ PUSH_TARGETS="${PUSH_TARGETS:-selfregistry}"
 target_names=()
 target_refs=()
 heartbeat_pid=""
+archive=""
 
 fail() {
   echo "::error::$*" >&2
@@ -18,6 +19,18 @@ stop_heartbeat() {
     wait "${heartbeat_pid}" 2>/dev/null || true
     heartbeat_pid=""
   fi
+}
+
+remove_archive() {
+  if [[ -n "${archive}" ]]; then
+    rm -f "${archive}"
+    archive=""
+  fi
+}
+
+cleanup() {
+  stop_heartbeat
+  remove_archive
 }
 
 start_heartbeat() {
@@ -47,7 +60,7 @@ build_target_ref() {
   fi
 }
 
-trap 'stop_heartbeat' EXIT
+trap 'cleanup' EXIT
 
 IFS=',' read -r -a push_targets <<< "$PUSH_TARGETS"
 for raw_name in "${push_targets[@]}"; do
@@ -89,15 +102,23 @@ case "$COPY_MODE" in
     done
     ;;
   single-platform)
+    command -v docker >/dev/null 2>&1 || {
+      echo "缺少 docker，单平台同步无法继续" >&2
+      exit 1
+    }
     command -v regctl >/dev/null 2>&1 || {
       echo "缺少 regctl，单平台同步无法继续" >&2
       exit 1
     }
-    echo "正在用 regctl 同步单个平台：${PLATFORM}"
+    echo "正在拉取 ${PLATFORM}，再导入目标 Registry，避免海外运行器对国内仓库做跨仓复制"
     start_heartbeat
+    docker pull --platform "$PLATFORM" "$SOURCE_IMAGE"
+    archive="$(mktemp "${TMPDIR:-/tmp}/image-sync.XXXXXX")"
+    docker save --output "$archive" "$SOURCE_IMAGE"
     for ref in "${target_refs[@]}"; do
-      regctl -v info image copy --platform "$PLATFORM" "$SOURCE_IMAGE" "$ref"
+      regctl -v info image import "$ref" "$archive"
     done
+    remove_archive
     ;;
   *)
     echo "未知的同步模式：$COPY_MODE" >&2
